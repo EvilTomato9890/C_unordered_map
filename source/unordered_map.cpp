@@ -78,14 +78,16 @@ static error_t normalize_capacity(unordered_map_t* unordered_map) {
 
 error_t unordered_map_init(unordered_map_t* unordered_map, size_t capacity, 
                            size_t key_size, size_t value_size,
-                           hash_func_t hash_func, key_cmp_t key_cmp) {
+                           key_func_t hash_func, key_cmp_t key_cmp) {
     HARD_ASSERT(unordered_map != nullptr, "unordered_map pointer is nullptr");
     HARD_ASSERT(hash_func     != nullptr, "hash_func pointer is nullptr");
     HARD_ASSERT(key_cmp       != nullptr, "key_cmp pointer is nullptr");
 
-    
+    LOGGER_DEBUG("Unordered_map_init started");
     if(capacity < INITIAL_CAPACITY) capacity = INITIAL_CAPACITY;
     else                            capacity = next_pow2_size_t(capacity);
+    LOGGER_DEBUG("New capacity is: %zu", capacity);
+
     unordered_map->is_capacity_pow2 = true;
     unordered_map->data       = calloc(capacity, key_size + value_size);
     RETURN_IF_ERROR(unordered_map->data == nullptr ? HM_ERR_MEM_ALLOC : HM_ERR_OK);
@@ -110,13 +112,15 @@ error_t unordered_map_init(unordered_map_t* unordered_map, size_t capacity,
 
 error_t unordered_map_static_init(unordered_map_t* unordered_map, void* data, 
                                   size_t capacity, size_t key_size, size_t value_size,
-                                  hash_func_t hash_func, key_cmp_t key_cmp) {
+                                  key_func_t hash_func, key_cmp_t key_cmp) {
     HARD_ASSERT(unordered_map != nullptr, "unordered_map pointer is nullptr");
     HARD_ASSERT(hash_func     != nullptr, "hash_func pointer is nullptr");
     HARD_ASSERT(key_cmp       != nullptr, "key_cmp pointer is nullptr");
 
-    
+    LOGGER_DEBUG("Unordered_map_static_init started");
     if(capacity < INITIAL_CAPACITY) capacity = INITIAL_CAPACITY;
+    LOGGER_DEBUG("New capacity is: %zu", capacity);
+
     unordered_map->slots = (elem_t*)calloc(capacity, sizeof(elem_t));
     unordered_map->is_capacity_pow2 = is_pow2(capacity);
     RETURN_IF_ERROR(unordered_map->slots == nullptr ? HM_ERR_MEM_ALLOC : HM_ERR_OK);
@@ -141,6 +145,7 @@ error_t unordered_map_static_init(unordered_map_t* unordered_map, void* data,
 error_t unordered_map_dest(unordered_map_t* unordered_map) {
     HARD_ASSERT(unordered_map != nullptr, "unordered_map pointer is nullptr");
 
+    LOGGER_DEBUG("Unordered_map_dest started");
     free(unordered_map->slots);
     if(!unordered_map->is_static) {
         free(unordered_map->data);
@@ -155,6 +160,8 @@ error_t unordered_map_dest(unordered_map_t* unordered_map) {
 error_t unordered_map_copy(const unordered_map_t* source, unordered_map_t* target) {
     HARD_ASSERT(source != nullptr, "source unordered_map pointer is nullptr");
     HARD_ASSERT(target != nullptr, "target unordered_map pointer is nullptr");
+
+    LOGGER_DEBUG("Unordered_map_copy started");
 
     error_t err = unordered_map_init(target, source->capacity, source->key_size, 
                                      source->value_size, source->hash_func, source->key_cmp);
@@ -230,6 +237,8 @@ error_t insert_elem(unordered_map_t* unordered_map, const void* key, const void*
     HARD_ASSERT(key           != nullptr, "Key is nulllptr");
     HARD_ASSERT(value         != nullptr, "Value is nullptr");
 
+    LOGGER_DEBUG("Inserting elem started");
+
     size_t step      = 0;
     size_t start_idx = get_index_and_step(unordered_map, key, &step);
     size_t index     = start_idx;
@@ -243,7 +252,8 @@ error_t insert_elem(unordered_map_t* unordered_map, const void* key, const void*
     error_t error = normalize_capacity(unordered_map);
     RETURN_IF_ERROR(error, unordered_map->size--;
                            unordered_map->slots[index].state = EMPTY);
-    
+
+    unordered_map->slots[index].state = USED;
     COPY_ELEM(unordered_map->slots[index].value, value, unordered_map);
     COPY_ELEM(unordered_map->slots[index].key,   key,   unordered_map);
     return HM_ERR_OK;

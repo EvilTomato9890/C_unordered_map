@@ -7,8 +7,8 @@
 
 //================================================================================
 
-typedef size_t (*hash_func_t)(const void *key);
-typedef bool   (*key_cmp_t  )(const void *a, const void *b);
+typedef size_t (*key_func_t)(const void *key);
+typedef bool   (*key_cmp_t )(const void *a, const void *b);
 
 enum elem_state_t {
     EMPTY,    
@@ -31,7 +31,7 @@ struct unordered_map_t {
     bool        is_capacity_pow2;
     size_t      value_size;
     size_t      key_size;
-    hash_func_t hash_func;
+    key_func_t  hash_func;
     key_cmp_t   key_cmp;
     bool        is_static;
 };
@@ -58,11 +58,11 @@ struct fixed_unordered_map_t {
 
 error_t unordered_map_init(unordered_map_t* unordered_map, 
                            size_t capacity, size_t key_size, size_t value_size,
-                           hash_func_t hash_func, key_cmp_t key_cmp);
+                           key_func_t hash_func, key_cmp_t key_cmp);
 
 error_t unordered_map_static_init(unordered_map_t* unordered_map, void* data, 
                                   size_t capacity, size_t key_size, size_t value_size,
-                                  hash_func_t hash_func, key_cmp_t key_cmp);
+                                  key_func_t hash_func, key_cmp_t key_cmp);
 //error_t init_fixed_unordered_map();
 
 error_t unordered_map_dest(unordered_map_t* unordered_map);
