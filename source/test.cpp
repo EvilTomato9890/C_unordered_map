@@ -18,10 +18,23 @@ int main() {
     u_map_t map = {};
     SIMPLE_U_MAP_INIT(&map, 2, size_t, char, key_hash, key_cmp);
     char   val = 'c';
+    char   val2 = 'a';
     size_t key = 500;
+
+    error_t err = HM_ERR_OK;
     u_map_insert_elem(&map, (void*)&key, (void*)&val);
+    u_map_insert_elem(&map, (void*)&key, (void*)&val);
+    u_map_insert_elem(&map, (void*)&key, (void*)&val);
+    u_map_insert_elem(&map, (void*)&key, (void*)&val2);
+
     char ans = 0;
-    u_map_remove_elem(&map, (void*)&key, (void*)&ans);
-    LOGGER_DEBUG("AA: %c", ans);
+    err = u_map_remove_elem(&map, (void*)&key, (void*)&ans);
+    LOGGER_DEBUG("err: %d AA: %c", err, ans);
+    err = u_map_remove_elem(&map, (void*)&key, (void*)&ans);
+    LOGGER_DEBUG("err: %d AA: %c", err, ans);
+    err = u_map_remove_elem(&map, (void*)&key, (void*)&ans);
+    LOGGER_DEBUG("err: %d AA: %c", err, ans);
+    err = u_map_remove_elem(&map, (void*)&key, (void*)&ans);
+    LOGGER_DEBUG("err: %d AA: %c", err, ans);
     u_map_dest(&map);
 }

@@ -58,26 +58,28 @@ struct fixed_u_map_t {
 //                        Some defines
 //================================================================================
 
+
+//================================================================================
+//                        Консрукторы, деконструкторы, копировальщики
+//================================================================================
+
 #define SIMPLE_U_MAP_INIT(u_map_, capacity_, key_type_, value_type_, hash_func_, key_cmp_) \
     u_map_init((u_map_), (capacity_),                     \
                 sizeof(key_type_),   alignof(key_type_),  \
                 sizeof(value_type_), alignof(key_type_),  \
                 (hash_func_),          (key_cmp_));
 
+error_t u_map_init(u_map_t* u_map, size_t capacity, 
+                   size_t key_size,      size_t key_align,
+                   size_t value_size,    size_t value_align,
+                   key_func_t hash_func, key_cmp_t key_cmp);
+
+
 #define SIMPLE_U_MAP_STATIC_INIT(u_map_, data_, capacity_, key_type_, value_type_, hash_func_, key_cmp_)                        \
     u_map_static_init((u_map_), (data_), (capacity_),     \
                 sizeof(key_type_),   alignof(key_type_),  \
                 sizeof(value_type_), alignof(key_type_),  \
                 (hash_func_),          (key_cmp_));
-
-//================================================================================
-//                        Консрукторы, деконструкторы, копировальщики
-//================================================================================
-
-error_t u_map_init(u_map_t* u_map, size_t capacity, 
-                   size_t key_size,      size_t key_align,
-                   size_t value_size,    size_t value_align,
-                   key_func_t hash_func, key_cmp_t key_cmp);
 
 error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity, 
                           size_t key_size,      size_t key_align,
@@ -103,6 +105,7 @@ bool   u_map_is_empty(const u_map_t* u_map);
 bool    u_map_get_elem   (const u_map_t* u_map, const void* key, void* value_out);
 error_t u_map_insert_elem(u_map_t*       u_map, const void* key, const void* value);
 error_t u_map_remove_elem(u_map_t*       u_map, const void* key, void* value_out);
+
 
 //================================================================================
 //                              Продвинутые функции

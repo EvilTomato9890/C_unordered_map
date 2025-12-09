@@ -8,8 +8,9 @@
 #include <memory.h>
 #include <stdint.h>
 
-const size_t INITIAL_CAPACITY = 16;
+const size_t INITIAL_CAPACITY = 2;
 const double MAX_LOAD_FACTOR  = 0.7;
+const double MIN_LOAD_FACTOR = MAX_LOAD_FACTOR / 4.0;
 const int MAX_TYPE_SIZE_BEFORE_CALLOC = 512;
 
 const uint64_t GOLD_64               = 0x9e3779b97f4a7c15ULL;
@@ -79,9 +80,86 @@ static size_t get_index_and_step(const u_map_t* u_map, const void* key, size_t* 
 
 }
 
-static error_t normalize_capacity(u_map_t* u_map) {
+static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
+    HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
+
+    if (u_map->is_static) return HM_ERR_OK;
+
+    if (new_capacity < INITIAL_CAPACITY)
+        new_capacity = INITIAL_CAPACITY;
+
+    u_map_t new_map = {};
+    error_t err = u_map_init(&new_map, new_capacity,
+                             u_map->key_size,   u_map->key_align,
+                             u_map->value_size, u_map->value_align,
+                             u_map->hash_func,  u_map->key_cmp);
+    RETURN_IF_ERROR(err);
+
+    for (size_t i = 0; i < u_map->capacity; ++i) {
+        if (u_map->slots[i].state != USED)
+            continue;
+
+        const void* key   = u_map->slots[i].key;
+        const void* value = u_map->slots[i].value;
+
+        size_t step = 0;
+        size_t idx  = get_index_and_step(&new_map, key, &step);
+
+        while (new_map.slots[idx].state == USED) {
+            idx = (idx + step) % new_map.capacity;
+        }
+
+        memcpy(new_map.slots[idx].key,   key,   u_map->key_size);
+        memcpy(new_map.slots[idx].value, value, u_map->value_size);
+        new_map.slots[idx].state = USED;
+
+        new_map.size++;
+        new_map.occupied++;
+    }
+
+    free(u_map->slots);
+    if (!u_map->is_static) {
+        free(u_map->data);
+    }
+
+    bool was_static = u_map->is_static;
+    *u_map = new_map;
+    u_map->is_static = was_static;
+
     return HM_ERR_OK;
 }
+
+static error_t normalize_capacity(u_map_t* u_map) {
+    HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
+
+    if (u_map->is_static || u_map->capacity == 0)
+        return HM_ERR_OK;
+
+    double load_occupied = (double)u_map->occupied / (double)u_map->capacity;
+    double load_real     = (double)u_map->size     / (double)u_map->capacity;
+
+    size_t new_capacity = u_map->capacity;
+
+    if (load_occupied > MAX_LOAD_FACTOR) {
+        if (u_map->capacity <= SIZE_MAX / 2) 
+            new_capacity = u_map->capacity * 2;
+        else
+            return HM_ERR_OK;
+    }
+    else if (u_map->capacity > INITIAL_CAPACITY && 
+             load_real       < MIN_LOAD_FACTOR) {
+        new_capacity = u_map->capacity / 2;
+        if (new_capacity < INITIAL_CAPACITY)
+            new_capacity = INITIAL_CAPACITY;
+    }
+
+    if (new_capacity == u_map->capacity)
+        return HM_ERR_OK;
+
+    LOGGER_DEBUG("Changing capacity from %zu, to %zu", u_map->capacity, new_capacity);
+    return u_map_rehash(u_map, new_capacity);
+}
+
 
 //================================================================================
 //                        Консрукторы, деконструкторы, копировальщики
@@ -255,6 +333,7 @@ error_t u_map_smart_copy(const u_map_t* source, u_map_t* target) {
         memcpy(target->slots[idx].value, value, source->value_size);
         target->slots[idx].state = USED;
         target->size++;
+        target->occupied++;
     }
 
     return HM_ERR_OK;
@@ -348,14 +427,15 @@ error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
     size_t start_idx = get_index_and_step(u_map, key, &step);
     size_t index     = start_idx;
 
-    while(u_map->slots[index].state != EMPTY) {                                    
-        index = (index + step) % u_map->capacity;   
-        if(index == start_idx) return HM_ERR_FULL;                         
-    }
+    HASH_MAP_PASS(u_map, step, start_idx, index,  
+                memcpy(u_map->slots[index].value, value, u_map->value_size);,
+                return HM_ERR_FULL;);
 
     u_map->size++;
+    u_map->occupied++;
     error_t error = normalize_capacity(u_map);
     RETURN_IF_ERROR(error, u_map->size--;
+                           u_map->occupied--;
                            u_map->slots[index].state = EMPTY);
 
     u_map->slots[index].state = USED;
