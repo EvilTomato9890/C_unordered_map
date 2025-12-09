@@ -1,0 +1,6 @@
+dumps/
+build/
+*.tree
+*.o
+*.dot
+*.svg
