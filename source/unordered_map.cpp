@@ -15,6 +15,7 @@ const int MAX_TYPE_SIZE_BEFORE_CALLOC = 512;
 const uint64_t GOLD_64               = 0x9e3779b97f4a7c15ULL;
 const uint64_t BIG_RANDOM_EVEN_NUM_1 = 0xbf58476d1ce4e5b9ULL;
 const uint64_t BIG_RANDOM_EVEN_NUM_2 = 0x94d049bb133111ebULL;
+
 //================================================================================
 //                        Помошники функции
 //================================================================================
@@ -41,8 +42,10 @@ static size_t prev_pow2_size_t(size_t n) {
     return n - (n >> 1);            
 }
 
-static bool is_pow2(size_t n) {
-    return n != 0 && (n & (n - 1)) == 0;
+static size_t round_up_to(size_t x, size_t align) {
+    if (align <= 1) return x;
+    size_t rem = x % align;
+    return rem == 0 ? x : x + (align - rem);
 }
 
 
@@ -85,68 +88,128 @@ static error_t normalize_capacity(u_map_t* u_map) {
 //================================================================================
 
 error_t u_map_init(u_map_t* u_map, size_t capacity, 
-                   size_t key_size, size_t value_size,
+                   size_t key_size,      size_t key_align,
+                   size_t value_size,    size_t value_align,
                    key_func_t hash_func, key_cmp_t key_cmp) {
-    HARD_ASSERT(u_map != nullptr, "u_map pointer is nullptr");
-    HARD_ASSERT(hash_func     != nullptr, "hash_func pointer is nullptr");
-    HARD_ASSERT(key_cmp       != nullptr, "key_cmp pointer is nullptr");
+
+    HARD_ASSERT(u_map       != nullptr, "u_map pointer is nullptr");
+    HARD_ASSERT(hash_func   != nullptr, "hash_func pointer is nullptr");
+    HARD_ASSERT(key_cmp     != nullptr, "key_cmp pointer is nullptr");
+    HARD_ASSERT(key_size    > 0,        "key_size must be > 0");
+    HARD_ASSERT(value_size  > 0,        "value_size must be > 0");
+    HARD_ASSERT(key_align   > 0,        "key_align must be > 0");
+    HARD_ASSERT(value_align > 0,        "value_align must be > 0");
 
     LOGGER_DEBUG("u_map_init started");
-    if(capacity < INITIAL_CAPACITY) capacity = INITIAL_CAPACITY;
-    else                            capacity = next_pow2_size_t(capacity);
+
+    if (capacity < INITIAL_CAPACITY)
+        capacity = INITIAL_CAPACITY;
+    else
+        capacity = next_pow2_size_t(capacity);
+
     LOGGER_DEBUG("New capacity is: %zu", capacity);
 
-    u_map->data       = calloc(capacity, key_size + value_size);
-    RETURN_IF_ERROR(u_map->data == nullptr ? HM_ERR_MEM_ALLOC : HM_ERR_OK);
-    u_map->slots      = (elem_t*)calloc(capacity, sizeof(elem_t));
-    RETURN_IF_ERROR(u_map->slots == nullptr ? HM_ERR_MEM_ALLOC : HM_ERR_OK, free(u_map->data););
+    size_t keys_bytes       = capacity * key_size;
+    size_t values_offset    = round_up_to(keys_bytes, value_align);
+    size_t total_bytes      = values_offset + capacity * value_size;
 
-    for(size_t i = 0; i < capacity; i++) {
-        u_map->slots[i].key   = (char*)u_map->data + i * (key_size + value_size);
-        u_map->slots[i].value = (char*)u_map->data + i * (key_size + value_size) + key_size;
-        u_map->slots[i].state = EMPTY;
+    void* data = calloc(total_bytes, 1);
+    if (!data) {
+        return HM_ERR_MEM_ALLOC;
     }
 
-    u_map->size       = 0;
-    u_map->capacity   = capacity;
-    u_map->value_size = value_size;
-    u_map->key_size   = key_size;
-    u_map->hash_func  = hash_func;
-    u_map->key_cmp    = key_cmp;
-    u_map->is_static  = false;
+    elem_t* slots = (elem_t*)calloc(capacity, sizeof(elem_t));
+    if (!slots) {
+        free(data);
+        return HM_ERR_MEM_ALLOC;
+    }
+
+    void* base        = (char*)data;
+    void* data_keys   = base;                   
+    void* data_values = (char*)base + values_offset;    
+
+    for (size_t i = 0; i < capacity; ++i) {
+        slots[i].key   = (char*)data_keys   + i * key_size;
+        slots[i].value = (char*)data_values + i * value_size;
+        slots[i].state = EMPTY;
+    }
+
+    u_map->slots       = slots;
+    u_map->data        = data;
+    u_map->data_keys   = data_keys;
+    u_map->data_values = data_values;
+
+    u_map->size        = 0;
+    u_map->occupied    = 0;
+    u_map->capacity    = capacity;
+
+    u_map->key_size    = key_size;
+    u_map->key_align   = key_align;
+
+    u_map->value_size  = value_size;
+    u_map->value_align = value_align;
+
+    u_map->hash_func   = hash_func;
+    u_map->key_cmp     = key_cmp;
+
+    u_map->is_static   = false;
+
     return HM_ERR_OK;
 }
 
-error_t u_map_static_init(u_map_t* u_map, void* data, 
-                          size_t capacity, size_t key_size, size_t value_size,
+error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity, 
+                          size_t key_size,      size_t key_align,
+                          size_t value_size,    size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp) {
-    HARD_ASSERT(u_map != nullptr, "u_map pointer is nullptr");
-    HARD_ASSERT(hash_func     != nullptr, "hash_func pointer is nullptr");
-    HARD_ASSERT(key_cmp       != nullptr, "key_cmp pointer is nullptr");
+    HARD_ASSERT(u_map   != nullptr, "u_map pointer is nullptr");
+    HARD_ASSERT(data    != nullptr, "data pointer is nullptr");
+    HARD_ASSERT(hash_func != nullptr, "hash_func pointer is nullptr");
+    HARD_ASSERT(key_cmp   != nullptr, "key_cmp pointer is nullptr");
 
     LOGGER_DEBUG("u_map_static_init started");
+
     capacity = prev_pow2_size_t(capacity);
+    RETURN_IF_ERROR(capacity == 0 ? HM_ERR_BAD_ARG : HM_ERR_OK);
     LOGGER_DEBUG("New capacity is: %zu", capacity);
 
-    u_map->slots = (elem_t*)calloc(capacity, sizeof(elem_t));
-    RETURN_IF_ERROR(u_map->slots == nullptr ? HM_ERR_MEM_ALLOC : HM_ERR_OK);
+    elem_t* slots = (elem_t*)calloc(capacity, sizeof(elem_t));
+    RETURN_IF_ERROR(slots == nullptr ? HM_ERR_MEM_ALLOC : HM_ERR_OK);
 
-    u_map->data = data;
-    for(size_t i = 0; i < capacity; i++) {
-        u_map->slots[i].key   = (char*)u_map->data + i * (key_size + value_size);
-        u_map->slots[i].value = (char*)u_map->data + i * (key_size + value_size) + key_size;
-        u_map->slots[i].state = EMPTY;
+    size_t keys_bytes    = capacity * key_size;
+    size_t values_offset = round_up_to(keys_bytes, value_align ? value_align : 1);
+
+    void* data_keys   = (char*)data;
+    void* data_values = (char*)data + values_offset;
+
+    for (size_t i = 0; i < capacity; i++) {
+        slots[i].key   = (char*)data_keys   + i * key_size;
+        slots[i].value = (char*)data_values + i * value_size;
+        slots[i].state = EMPTY;
     }
 
-    u_map->size       = 0;
-    u_map->capacity   = capacity;
-    u_map->value_size = value_size;
-    u_map->key_size   = key_size;
-    u_map->hash_func  = hash_func;
-    u_map->key_cmp    = key_cmp;
-    u_map->is_static  = true;
+    u_map->slots       = slots;
+    u_map->data        = data;
+    u_map->data_keys   = data_keys;
+    u_map->data_values = data_values;
+
+    u_map->size        = 0;
+    u_map->occupied    = 0;
+    u_map->capacity    = capacity;
+
+    u_map->key_size    = key_size;
+    u_map->key_align   = key_align;
+
+    u_map->value_size  = value_size;
+    u_map->value_align = value_align;
+
+    u_map->hash_func   = hash_func;
+    u_map->key_cmp     = key_cmp;
+
+    u_map->is_static   = true;  
+
     return HM_ERR_OK;
 }
+
 
 error_t u_map_dest(u_map_t* u_map) {
     HARD_ASSERT(u_map != nullptr, "u_map pointer is nullptr");
@@ -156,10 +219,7 @@ error_t u_map_dest(u_map_t* u_map) {
     if(!u_map->is_static) {
         free(u_map->data);
     }
-    u_map->slots = nullptr;
-    u_map->data  = nullptr;
-    u_map->size  = 0;
-    u_map->capacity = 0;
+    *u_map = {};
     return HM_ERR_OK;
 }
 
@@ -170,8 +230,9 @@ error_t u_map_smart_copy(const u_map_t* source, u_map_t* target) {
     LOGGER_DEBUG("u_map_smart_copy started");
 
     error_t err = u_map_init(target, source->capacity,
-                             source->key_size,  source->value_size,
-                             source->hash_func, source->key_cmp);
+                             source->key_size,   source->key_align,
+                             source->value_size, source->value_align,
+                             source->hash_func,  source->key_cmp);
     RETURN_IF_ERROR(err);
 
     target->size = 0;
@@ -206,15 +267,13 @@ error_t u_map_raw_copy(const u_map_t* source, u_map_t* target) {
     LOGGER_DEBUG("u_map_raw_copy started");
 
     error_t err = u_map_init(target, source->capacity,
-                             source->key_size,  source->value_size,
-                             source->hash_func, source->key_cmp);
+                             source->key_size,   source->key_align,
+                             source->value_size, source->value_align,
+                             source->hash_func,  source->key_cmp);
     RETURN_IF_ERROR(err);
 
-    const size_t elem_stride = source->key_size + source->value_size;
-    const size_t total_bytes = source->capacity * elem_stride;
-
-    memcpy(target->data, source->data, total_bytes);
-
+    memcpy(target->data_keys,   source->data_keys,   source->capacity * source->key_size);
+    memcpy(target->data_values, source->data_values, source->capacity * source->value_size);
     for (size_t i = 0; i < source->capacity; ++i) {
         target->slots[i].state = source->slots[i].state;
     }

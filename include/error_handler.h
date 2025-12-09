@@ -14,11 +14,11 @@ enum error_t {
  
 #define RETURN_IF_ERROR(error, ...)                        \
     do {                                                   \
-        if((int)(error)) {                                 \
+        if((int)(error) != 0) {                                 \
         LOGGER_ERROR("ERROR: %d happend", error);          \
         __VA_ARGS__;                                       \
         return error;                                      \
         }                                                  \
     } while (0)
-    
+
 #endif
