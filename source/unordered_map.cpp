@@ -8,7 +8,7 @@
 #include <memory.h>
 #include <stdint.h>
 
-const size_t INITIAL_CAPACITY = 2;
+const size_t INITIAL_CAPACITY = 32;
 const double MAX_LOAD_FACTOR  = 0.7;
 const double MIN_LOAD_FACTOR = MAX_LOAD_FACTOR / 4.0;
 const int MAX_TYPE_SIZE_BEFORE_CALLOC = 512;
@@ -423,24 +423,26 @@ error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
 
     LOGGER_DEBUG("Inserting elem started");
 
+    error_t error = normalize_capacity(u_map);
+    RETURN_IF_ERROR(error);
+
     size_t step      = 0;
     size_t start_idx = get_index_and_step(u_map, key, &step);
     size_t index     = start_idx;
-
     HASH_MAP_PASS(u_map, step, start_idx, index,  
                 memcpy(u_map->slots[index].value, value, u_map->value_size);,
                 return HM_ERR_FULL;);
 
-    u_map->size++;
-    u_map->occupied++;
-    error_t error = normalize_capacity(u_map);
-    RETURN_IF_ERROR(error, u_map->size--;
-                           u_map->occupied--;
-                           u_map->slots[index].state = EMPTY);
+    bool is_new =(u_map->slots[index].state != USED);
 
     u_map->slots[index].state = USED;
     memcpy(u_map->slots[index].value, value, u_map->value_size);
     memcpy(u_map->slots[index].key,   key,   u_map->key_size);
+    if(is_new) {
+        u_map->size++;
+        u_map->occupied++;
+    }
+
     return HM_ERR_OK;
 }
 

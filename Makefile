@@ -17,7 +17,7 @@ CXXFLAGS := -Iinclude \
             -Wstack-usage=8192 -Wstrict-aliasing \
             -Wstrict-null-sentinel -Wtype-limits \
             -Wwrite-strings -Werror=vla \
-            -D_DEBUG -D_EJUDGE_CLIENT_SIDE -DHASH_MAP_LOGGER_ALL
+            -D_DEBUG -D_EJUDGE_CLIENT_SIDE #-DHASH_MAP_LOGGER_ALL
 
 LDFLAGS := -fsanitize=address,undefined,leak
 
