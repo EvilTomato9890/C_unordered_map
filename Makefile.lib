@@ -1,0 +1,75 @@
+CXX := g++
+AR  := ar
+
+SRC_DIR  := source
+INC_DIR  := include
+BUILD_DIR:= build
+LIB_DIR  := lib
+
+CXXFLAGS := -I$(INC_DIR) \
+            -fsanitize=address,undefined,leak \
+            -fno-omit-frame-pointer \
+            -Wshadow -Winit-self -Wredundant-decls \
+            -Wcast-align -Wundef -Wfloat-equal -Winline \
+            -Wunreachable-code -Wmissing-declarations \
+            -Wmissing-include-dirs -Wswitch-enum -Wswitch-default \
+            -Weffc++ -Wmain -Wextra -Wall -g -pipe \
+            -fexceptions -Wcast-qual -Wconversion \
+            -Wctor-dtor-privacy -Wempty-body -Wformat-security \
+            -Wformat=2 -Wignored-qualifiers -Wlogical-op \
+            -Wno-missing-field-initializers -Wnon-virtual-dtor \
+            -Woverloaded-virtual -Wpointer-arith -Wsign-promo \
+            -Wstack-usage=8192 -Wstrict-aliasing \
+            -Wstrict-null-sentinel -Wtype-limits \
+            -Wwrite-strings -Werror=vla \
+            -D_DEBUG -D_EJUDGE_CLIENT_SIDE
+
+SRCS := $(SRC_DIR)/unordered_map.cpp \
+        $(SRC_DIR)/logger.cpp
+
+OBJS_DEFAULT := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
+
+OBJS_LOGGER  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%_logger.o,$(SRCS))
+
+LIB_DEFAULT := $(LIB_DIR)/libunordered_map.a
+LIB_LOGGER  := $(LIB_DIR)/libunordered_map_logger.a
+
+.PHONY: all logger clean dirs
+
+# По умолчанию — обычная библиотека
+all: dirs $(LIB_DEFAULT)
+
+# Режим с HASH_LOGGER_ALL
+logger: dirs $(LIB_LOGGER)
+
+#---------------------------------------
+# Статические библиотеки
+#---------------------------------------
+
+$(LIB_DEFAULT): $(OBJS_DEFAULT)
+	$(AR) rcs $@ $^
+
+$(LIB_LOGGER): $(OBJS_LOGGER)
+	$(AR) rcs $@ $^
+
+#---------------------------------------
+# Компиляция объектов
+#---------------------------------------
+
+# Обычные объекты
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp $(INC_DIR)/unordered_map.h $(INC_DIR)/logger.h $(INC_DIR)/asserts.h $(INC_DIR)/colors.h $(INC_DIR)/error_handler.h
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Объекты с HASH_LOGGER_ALL
+$(BUILD_DIR)/%_logger.o: $(SRC_DIR)/%.cpp $(INC_DIR)/unordered_map.h $(INC_DIR)/logger.h $(INC_DIR)/asserts.h $(INC_DIR)/colors.h $(INC_DIR)/error_handler.h
+	@$(CXX) $(CXXFLAGS) -DHASH_LOGGER_ALL -c $< -o $@
+
+#---------------------------------------
+# Вспомогательные цели
+#---------------------------------------
+
+dirs:
+	mkdir -p $(BUILD_DIR) $(LIB_DIR)
+
+clean:
+	rm -rf $(BUILD_DIR) $(LIB_DIR)
