@@ -64,9 +64,9 @@ static size_t mix_hash(size_t x) { //splitmix64
 }
 
 static size_t get_index_and_step(const u_map_t* u_map, const void* key, size_t* step_out) {
-    HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
-    HARD_ASSERT(key           != nullptr, "Key is nullptr");
-    HARD_ASSERT(step_out      != nullptr, "Step_out is nullptr");    
+    HARD_ASSERT(u_map           != nullptr, "u_map is nullptr");
+    HARD_ASSERT(key             != nullptr, "Key is nullptr");
+    HARD_ASSERT(step_out        != nullptr, "Step_out is nullptr");    
     HARD_ASSERT(u_map->capacity != 0, "Capacity is 0");
 
     size_t raw_hash = u_map->hash_func(key);
@@ -236,8 +236,8 @@ error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
                           size_t key_size,      size_t key_align,
                           size_t value_size,    size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp) {
-    HARD_ASSERT(u_map   != nullptr, "u_map pointer is nullptr");
-    HARD_ASSERT(data    != nullptr, "data pointer is nullptr");
+    HARD_ASSERT(u_map     != nullptr, "u_map pointer is nullptr");
+    HARD_ASSERT(data      != nullptr, "data pointer is nullptr");
     HARD_ASSERT(hash_func != nullptr, "hash_func pointer is nullptr");
     HARD_ASSERT(key_cmp   != nullptr, "key_cmp pointer is nullptr");
 
@@ -398,7 +398,7 @@ size_t u_map_capacity(const u_map_t* u_map) {
 
 bool u_map_get_elem(const u_map_t* u_map, const void* key, void* value_out) {
     HARD_ASSERT(u_map != nullptr, "u_map pointer is nullptr");
-    HARD_ASSERT(key           != nullptr, "key pointer is nullptr");
+    HARD_ASSERT(key   != nullptr, "key pointer is nullptr");
 
     size_t step      = 0;
     size_t start_idx = get_index_and_step(u_map, key, &step);
@@ -415,8 +415,8 @@ bool u_map_get_elem(const u_map_t* u_map, const void* key, void* value_out) {
 
 error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
-    HARD_ASSERT(key           != nullptr, "Key is nulllptr");
-    HARD_ASSERT(value         != nullptr, "Value is nullptr");
+    HARD_ASSERT(key   != nullptr, "Key is nulllptr");
+    HARD_ASSERT(value != nullptr, "Value is nullptr");
 
     LOGGER_DEBUG("Inserting elem started");
 
@@ -445,7 +445,7 @@ error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
 
 error_t u_map_remove_elem(u_map_t* u_map, const void* key, void* value_out) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
-    HARD_ASSERT(key           != nullptr, "Key is nulllptr");
+    HARD_ASSERT(key   != nullptr, "Key is nulllptr");
 
     LOGGER_DEBUG("Removing elem started");
 
