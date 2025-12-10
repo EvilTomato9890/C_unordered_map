@@ -236,11 +236,15 @@ error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
                           size_t key_size,      size_t key_align,
                           size_t value_size,    size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp) {
-    HARD_ASSERT(u_map     != nullptr, "u_map pointer is nullptr");
-    HARD_ASSERT(data      != nullptr, "data pointer is nullptr");
-    HARD_ASSERT(hash_func != nullptr, "hash_func pointer is nullptr");
-    HARD_ASSERT(key_cmp   != nullptr, "key_cmp pointer is nullptr");
-
+    HARD_ASSERT(u_map       != nullptr, "u_map pointer is nullptr");
+    HARD_ASSERT(data        != nullptr, "data pointer is nullptr");
+    HARD_ASSERT(hash_func   != nullptr, "hash_func pointer is nullptr");
+    HARD_ASSERT(key_cmp     != nullptr, "key_cmp pointer is nullptr");
+    HARD_ASSERT(key_size    > 0,        "key_size must be > 0");
+    HARD_ASSERT(value_size  > 0,        "value_size must be > 0");
+    HARD_ASSERT(key_align   > 0,        "key_align must be > 0");
+    HARD_ASSERT(value_align > 0,        "value_align must be > 0");
+    
     LOGGER_DEBUG("u_map_static_init started");
 
     capacity = prev_pow2_size_t(capacity);
