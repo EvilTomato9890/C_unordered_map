@@ -122,10 +122,7 @@ static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
         free(u_map->data);
     }
 
-    bool was_static = u_map->is_static;
     *u_map = new_map;
-    u_map->is_static = was_static;
-
     return HM_ERR_OK;
 }
 
