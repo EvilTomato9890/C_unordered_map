@@ -10,7 +10,9 @@
 
 const size_t INITIAL_CAPACITY = 32;
 const double MAX_LOAD_FACTOR  = 0.7;
-const double MIN_LOAD_FACTOR = MAX_LOAD_FACTOR / 4.0;
+const double MIN_LOAD_FACTOR  = MAX_LOAD_FACTOR / 4.0;
+const double REDUCTION_FACTOR = 2;
+const double GROWTH_FACTOR    = 2;
 const int MAX_TYPE_SIZE_BEFORE_CALLOC = 512;
 
 const uint64_t GOLD_64               = 0x9e3779b97f4a7c15ULL;
@@ -138,14 +140,11 @@ static error_t normalize_capacity(u_map_t* u_map) {
     size_t new_capacity = u_map->capacity;
 
     if (load_occupied > MAX_LOAD_FACTOR) {
-        if (u_map->capacity <= SIZE_MAX / 2) 
-            new_capacity = u_map->capacity * 2;
-        else
-            return HM_ERR_OK;
+        new_capacity = (size_t)((double)u_map->capacity * GROWTH_FACTOR);
     }
     else if (u_map->capacity > INITIAL_CAPACITY && 
              load_real       < MIN_LOAD_FACTOR) {
-        new_capacity = u_map->capacity / 2;
+        new_capacity = (size_t)((double)u_map->capacity / REDUCTION_FACTOR);
         if (new_capacity < INITIAL_CAPACITY)
             new_capacity = INITIAL_CAPACITY;
     }

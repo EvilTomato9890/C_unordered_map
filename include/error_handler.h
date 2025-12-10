@@ -12,12 +12,13 @@ enum error_t {
     HM_ERR_INTERNAL 
 };
  
-#define RETURN_IF_ERROR(error, ...)                        \
+#define RETURN_IF_ERROR(error_, ...)                       \
     do {                                                   \
-        if((int)(error) != 0) {                                 \
-        LOGGER_ERROR("ERROR: %d happend", error);          \
+        error_t err_ = error_;                             \
+        if((int)(err_) != 0) {                             \
+        LOGGER_ERROR("ERROR: %d happend", err_);           \
         __VA_ARGS__;                                       \
-        return error;                                      \
+        return err_;                                       \
         }                                                  \
     } while (0)
 
