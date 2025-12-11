@@ -23,7 +23,6 @@ struct elem_t {
 };
 
 struct u_map_t {
-    elem_t*     slots;
     void*       data_keys;
     void*       data_values;
     void*       data;
@@ -36,7 +35,6 @@ struct u_map_t {
     size_t      value_align;
 
     size_t      key_size;
-    size_t      key_align;
 
     key_func_t  hash_func;
     key_cmp_t   key_cmp;
@@ -77,8 +75,7 @@ struct fixed_u_map_t {
                 (hash_func_),          (key_cmp_));
 
 error_t u_map_init(u_map_t* u_map, size_t capacity, 
-                   size_t key_size,      size_t key_align,
-                   size_t value_size,    size_t value_align,
+                   size_t key_size, size_t value_size, size_t value_align,
                    key_func_t hash_func, key_cmp_t key_cmp);
 
 
@@ -89,8 +86,7 @@ error_t u_map_init(u_map_t* u_map, size_t capacity,
                 (hash_func_),          (key_cmp_));
 
 error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity, 
-                          size_t key_size,      size_t key_align,
-                          size_t value_size,    size_t value_align,
+                          size_t key_size, size_t value_size, size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp);
 //error_t init_fixed_u_map();
 

@@ -42,7 +42,7 @@ static void test_basic() {
     u_map_t m = {};
     error_t err = u_map_init(&m,
                              4,                                // capacity hint
-                             sizeof(size_t), alignof(size_t), // key
+                             sizeof(size_t), // key
                              sizeof(int),    alignof(int),    // value
                              size_t_hash,
                              size_t_eq);
@@ -94,7 +94,7 @@ static void test_growth() {
     u_map_t m = {};
     error_t err = u_map_init(&m,
                              2,
-                             sizeof(size_t), alignof(size_t),
+                             sizeof(size_t),
                              sizeof(int),    alignof(int),
                              size_t_hash,
                              size_t_eq);
@@ -134,7 +134,7 @@ static void test_shrink_and_tombstones() {
     u_map_t m = {};
     error_t err = u_map_init(&m,
                              32,
-                             sizeof(size_t), alignof(size_t),
+                             sizeof(size_t), 
                              sizeof(int),    alignof(int),
                              size_t_hash,
                              size_t_eq);
@@ -180,7 +180,7 @@ static void test_copy() {
     u_map_t src = {};
     error_t err = u_map_init(&src,
                              8,
-                             sizeof(size_t), alignof(size_t),
+                             sizeof(size_t), 
                              sizeof(int),    alignof(int),
                              size_t_hash,
                              size_t_eq);
@@ -233,7 +233,6 @@ static void test_static_init() {
 
     const size_t cap        = 8;
     const size_t key_size   = sizeof(size_t);
-    const size_t key_align  = alignof(size_t);
     const size_t val_size   = sizeof(int);
     const size_t val_align  = alignof(int);
 
@@ -253,7 +252,7 @@ static void test_static_init() {
     error_t err = u_map_static_init(&m,
                                     buffer,
                                     cap,
-                                    key_size,  key_align,
+                                    key_size,  
                                     val_size,  val_align,
                                     size_t_hash,
                                     size_t_eq);
