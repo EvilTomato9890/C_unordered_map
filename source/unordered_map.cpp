@@ -7,9 +7,10 @@
 #include <string.h>
 #include <stdint.h>
 
-static const size_t INITIAL_CAPACITY = 32;
-static const double MAX_LOAD_FACTOR  = 0.7;
-static const double MIN_LOAD_FACTOR  = MAX_LOAD_FACTOR / 4.0;
+static const size_t INITIAL_CAPACITY        = 32;
+static const double MAX_LOAD_FACTOR         = 0.7;
+static const double MIN_LOAD_FACTOR         = MAX_LOAD_FACTOR / 4.0;
+static const double MAX_GARBAGE_LOAD_FACTOR = 0.25;
 
 static const uint64_t GOLD_64               = 0x9e3779b97f4a7c15ULL;
 static const uint64_t BIG_RANDOM_EVEN_NUM_1 = 0xbf58476d1ce4e5b9ULL;
@@ -80,7 +81,7 @@ static void u_map_calc_layout(size_t  capacity,
 size_t u_map_required_bytes(size_t capacity,
                             size_t key_size,   size_t key_align,
                             size_t value_size, size_t value_align) {
-    capacity = prev_pow2_size_t(capacity);
+    capacity = next_pow2_size_t(capacity);
     if (capacity == 0) return 0;
 
     size_t key_stride = 0, value_stride = 0, values_offset = 0, states_offset = 0, total_bytes = 0;
@@ -235,7 +236,7 @@ static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
         size_t idx = 0;
         bool is_not_full = u_map_find_insert_slot(&new_map, key, &idx, &is_new);
         if (!is_not_full) {
-            u_map_dest(&new_map);
+            u_map_destroy(&new_map);
             return HM_ERR_FULL;
         }
 
@@ -253,29 +254,45 @@ static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
 
 static error_t normalize_capacity(u_map_t* u_map) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
+    HARD_ASSERT(u_map->occupied > u_map->size, "Ocupied elems less than elems");
 
     if (u_map->is_static || u_map->capacity == 0)
         return HM_ERR_OK;
 
-    double load_occupied = (double)u_map->occupied / (double)u_map->capacity;
-    double load_real     = (double)u_map->size     / (double)u_map->capacity;
-
+    const double load_occupied = (double)u_map->occupied                 / (double)u_map->capacity;
+    const double load_real     = (double)u_map->size                     / (double)u_map->capacity;
+    const double load_garbage  = (double)(u_map->occupied - u_map->size) / (double)u_map->capacity;
     size_t new_capacity = u_map->capacity;
+    bool need_rehash = false;
 
-    if (load_occupied > MAX_LOAD_FACTOR) {
-        new_capacity = u_map->capacity * 2;
-    } else if (u_map->capacity > INITIAL_CAPACITY && load_real < MIN_LOAD_FACTOR) {
+    if (u_map->capacity > INITIAL_CAPACITY && load_real < MIN_LOAD_FACTOR) {
         new_capacity = u_map->capacity / 2;
         if (new_capacity < INITIAL_CAPACITY)
             new_capacity = INITIAL_CAPACITY;
+        need_rehash = true;
+    }
+    else if (load_occupied > MAX_LOAD_FACTOR) {
+        if (load_real < MAX_LOAD_FACTOR && (load_garbage > MAX_GARBAGE_LOAD_FACTOR)) {
+            new_capacity = u_map->capacity;
+            need_rehash = true;
+        } else {
+            new_capacity = u_map->capacity * 2;
+            need_rehash = true;
+        }
     }
 
-    if (new_capacity == u_map->capacity)
+    if (!need_rehash)
         return HM_ERR_OK;
 
-    LOGGER_DEBUG("Changing capacity from %zu to %zu", u_map->capacity, new_capacity);
+    if (new_capacity == u_map->capacity) {
+        LOGGER_DEBUG("Rehashing capacity %zu (cleaning tombstones)", u_map->capacity);
+    } else {
+        LOGGER_DEBUG("Changing capacity from %zu to %zu", u_map->capacity, new_capacity);
+    }
+
     return u_map_rehash(u_map, new_capacity);
 }
+
 
 //================================================================================
 //                       Конструкторы / Деструкторы / Копировальщики
@@ -418,7 +435,7 @@ error_t u_map_smart_copy(u_map_t* target, const u_map_t* source) {
         size_t idx = 0;
         bool is_not_full = u_map_find_insert_slot(target, key, &idx, &is_new);
         if (!is_not_full) {
-            u_map_dest(target);
+            u_map_destroy(target);
             return HM_ERR_FULL;
         }
 

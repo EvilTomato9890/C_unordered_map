@@ -47,7 +47,8 @@ typedef struct u_map_t {
 //                      Функции-помощники
 //================================================================================
 
-// How many bytes are required for a static buffer (capacity is rounded DOWN to pow2 internally).
+// Сколько байт нужно для статической хэш-таблицы.
+// - capacity Округляется до ближайшей степени двойки
 size_t u_map_required_bytes(size_t capacity,
                             size_t key_size,   size_t key_align,
                             size_t value_size, size_t value_align);
@@ -57,24 +58,22 @@ size_t u_map_required_bytes(size_t capacity,
 //                       Конструкторы / Деконструкторы /Копировальщиеи
 //================================================================================
 
-// - capacity for dynamic init is rounded UP to pow2 (and >= INITIAL_CAPACITY inside .cpp).
-// - key/value alignment is important if your hash/compare dereference typed pointers.
-
+// - capacity округляется вверх до ближайшей степени двойки (и >= INITIAL_CAPACITY внутри .cpp).
 error_t u_map_init(u_map_t* u_map, size_t capacity,
                    size_t key_size,   size_t key_align,
                    size_t value_size, size_t value_align,
                    key_func_t hash_func, key_cmp_t key_cmp);
 
 
-// - capacity is rounded DOWN to pow2 (must be > 0).
-// - caller must provide a buffer aligned at least to max(key_align, value_align, alignof(elem_state_t))
-// - buffer must be at least u_map_required_bytes(capacity, ...)
+// - capacity округляетс вниз до ближайшей степени 2-ки  (больше > 0).
+// - при вызову должен быть предоставлен буффер выравненнй хотя бы по максимальному (key_align, value_align, alignof(elem_state_t))
+// - буффер должен быть хотя бы u_map_required_bytes(capacity, ...)
 error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
                           size_t key_size,   size_t key_align,
                           size_t value_size, size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp);
 
-error_t u_map_dest(u_map_t* u_map);
+error_t u_map_destroy(u_map_t* u_map);
 
 error_t u_map_smart_copy(u_map_t* target, const u_map_t* source);
 error_t u_map_raw_copy  (u_map_t* target, const u_map_t* source);

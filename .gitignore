@@ -5,5 +5,5 @@ build/
 *.dot
 *.svg
 *.a
-tests.cpp
+test.cpp
 rm_identifier.sh
