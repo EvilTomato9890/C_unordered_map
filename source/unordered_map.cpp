@@ -208,7 +208,7 @@ static bool u_map_find_insert_slot(u_map_t* u_map, const void* key, size_t* idx_
 //                        Рехэш и нормализация
 //================================================================================
 
-static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
+static hm_error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
 
     if (u_map->is_static) return HM_ERR_OK;
@@ -220,7 +220,7 @@ static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
 
     u_map_t new_map;
     memset(&new_map, 0, sizeof(new_map));
-    error_t err = u_map_init(&new_map, new_capacity,
+    hm_error_t err = u_map_init(&new_map, new_capacity,
                              u_map->key_size,   u_map->key_align,
                              u_map->value_size, u_map->value_align,
                              u_map->hash_func, u_map->key_cmp);
@@ -252,9 +252,9 @@ static error_t u_map_rehash(u_map_t* u_map, size_t new_capacity) {
     return HM_ERR_OK;
 }
 
-static error_t normalize_capacity(u_map_t* u_map) {
+static hm_error_t normalize_capacity(u_map_t* u_map) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
-    HARD_ASSERT(u_map->occupied > u_map->size, "Ocupied elems less than elems");
+    HARD_ASSERT(u_map->occupied >= u_map->size, "Ocupied elems less than elems");
 
     if (u_map->is_static || u_map->capacity == 0)
         return HM_ERR_OK;
@@ -298,7 +298,7 @@ static error_t normalize_capacity(u_map_t* u_map) {
 //                       Конструкторы / Деструкторы / Копировальщики
 //================================================================================
 
-error_t u_map_init(u_map_t* u_map, size_t capacity,
+hm_error_t u_map_init(u_map_t* u_map, size_t capacity,
                    size_t key_size,   size_t key_align,
                    size_t value_size, size_t value_align,
                    key_func_t hash_func, key_cmp_t key_cmp) {
@@ -344,7 +344,7 @@ error_t u_map_init(u_map_t* u_map, size_t capacity,
     return HM_ERR_OK;
 }
 
-error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
+hm_error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
                           size_t key_size,   size_t key_align,
                           size_t value_size, size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp) {
@@ -400,7 +400,7 @@ error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
     return HM_ERR_OK;
 }
 
-error_t u_map_destroy(u_map_t* u_map) {
+hm_error_t u_map_destroy(u_map_t* u_map) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
 
     LOGGER_DEBUG("u_map_dest started");
@@ -413,13 +413,13 @@ error_t u_map_destroy(u_map_t* u_map) {
     return HM_ERR_OK;
 }
 
-error_t u_map_smart_copy(u_map_t* target, const u_map_t* source) {
+hm_error_t u_map_smart_copy(u_map_t* target, const u_map_t* source) {
     HARD_ASSERT(target != nullptr, "target is nullptr");
     HARD_ASSERT(source != nullptr, "source is nullptr");
 
     LOGGER_DEBUG("u_map_smart_copy started");
 
-    error_t err = u_map_init(target, source->capacity,
+    hm_error_t err = u_map_init(target, source->capacity,
                              source->key_size,   source->key_align,
                              source->value_size, source->value_align,
                              source->hash_func, source->key_cmp);
@@ -449,13 +449,13 @@ error_t u_map_smart_copy(u_map_t* target, const u_map_t* source) {
     return HM_ERR_OK;
 }
 
-error_t u_map_raw_copy(u_map_t* target, const u_map_t* source) {
+hm_error_t u_map_raw_copy(u_map_t* target, const u_map_t* source) {
     HARD_ASSERT(target != nullptr, "target is nullptr");
     HARD_ASSERT(source != nullptr, "source is nullptr");
 
     LOGGER_DEBUG("u_map_raw_copy started");
 
-    error_t err = u_map_init(target, source->capacity,
+    hm_error_t err = u_map_init(target, source->capacity,
                              source->key_size,   source->key_align,
                              source->value_size, source->value_align,
                              source->hash_func, source->key_cmp);
@@ -506,14 +506,14 @@ bool u_map_get_elem(const u_map_t* u_map, const void* key, void* value_out) {
     return true;
 }
 
-error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
+hm_error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
     HARD_ASSERT(u_map  != nullptr, "u_map is nullptr");
     HARD_ASSERT(key    != nullptr, "key is nullptr");
     HARD_ASSERT(value  != nullptr, "value is nullptr");
 
     LOGGER_DEBUG("u_map_insert_elem started");
 
-    error_t err = normalize_capacity(u_map);
+    hm_error_t err = normalize_capacity(u_map);
     RETURN_IF_ERROR(err);
 
     size_t idx = 0;
@@ -541,13 +541,13 @@ error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value) {
     return HM_ERR_OK;
 }
 
-error_t u_map_remove_elem(u_map_t* u_map, const void* key, void* value_out) {
+hm_error_t u_map_remove_elem(u_map_t* u_map, const void* key, void* value_out) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
     HARD_ASSERT(key   != nullptr, "key is nullptr");
 
     LOGGER_DEBUG("u_map_remove_elem started");
 
-    error_t err = normalize_capacity(u_map);
+    hm_error_t err = normalize_capacity(u_map);
     RETURN_IF_ERROR(err);
 
     size_t idx = 0;
@@ -569,7 +569,7 @@ error_t u_map_remove_elem(u_map_t* u_map, const void* key, void* value_out) {
 //                              Продвинутые
 //================================================================================
 
-error_t read_arr_to_u_map(u_map_t* u_map, const void* arr, size_t pair_count) {
+hm_error_t read_arr_to_u_map(u_map_t* u_map, const void* arr, size_t pair_count) {
     HARD_ASSERT(u_map != nullptr, "u_map is nullptr");
     HARD_ASSERT(arr  != nullptr || pair_count == 0, "arr is nullptr");
 
@@ -583,7 +583,7 @@ error_t read_arr_to_u_map(u_map_t* u_map, const void* arr, size_t pair_count) {
         const void* key   = (const void*)(ptr + i * pair_stride);
         const void* value = (const void*)(ptr + i * pair_stride + value_off);
 
-        error_t err = u_map_insert_elem(u_map, key, value);
+        hm_error_t err = u_map_insert_elem(u_map, key, value);
         RETURN_IF_ERROR(err);
     }
 

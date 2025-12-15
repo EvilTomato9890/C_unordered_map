@@ -1,295 +1,460 @@
-// u_map_test.cpp
+// tests_unordered_map.cpp
+//
+// Набор тестов для библиотеки unordered_map (u_map).
+//
+// Сборка (пример, под *nix):
+//   g++ -std=c++17 -O2 -I. tests_unordered_map.cpp unordered_map.cpp logger.cpp -o u_map_tests
+//   ./u_map_tests
+//
+// На Windows (MSVC) просто добавь этот файл в проект рядом с исходниками библиотеки.
+//
+// Важно: библиотека использует error_handler.h / logger.h / asserts.h —
+// при сборке тестов должны собираться те же зависимости, что и у unordered_map.cpp.
+
 #include "unordered_map.h"
-#include "logger.h"
-#include "error_handler.h"
 
-#include <cstdio>
-#include <cstring>
-#include <cstddef>   // для alignof
 #include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <algorithm>
+#include <unordered_map>
+#include <random>
+#include <vector>
 
-static size_t size_t_hash(const void* a) {
-    size_t v;
-    memcpy(&v, a, sizeof(v));   // безопасно даже при странном выравнивании
-    return v;
+#if defined(_MSC_VER)
+    #include <malloc.h>
+#endif
+
+//------------------------------------------------------------------------------
+// Утилиты
+//------------------------------------------------------------------------------
+
+static bool is_pow2(size_t x) {
+    return x != 0 && (x & (x - 1)) == 0;
 }
 
-static bool size_t_eq(const void* a, const void* b) {
-    size_t x, y;
-    memcpy(&x, a, sizeof(x));
-    memcpy(&y, b, sizeof(y));
-    return x == y;
+static void* aligned_malloc_portable(size_t alignment, size_t size) {
+#if defined(_MSC_VER)
+    return _aligned_malloc(size, alignment);
+#else
+    void* p = nullptr;
+    // posix_memalign требует alignment степенью двойки и кратным sizeof(void*)
+    if (alignment < sizeof(void*)) alignment = sizeof(void*);
+    int rc = posix_memalign(&p, alignment, size);
+    return (rc == 0) ? p : nullptr;
+#endif
 }
+
+static void aligned_free_portable(void* p) {
+#if defined(_MSC_VER)
+    _aligned_free(p);
+#else
+    free(p);
+#endif
+}
+
+//------------------------------------------------------------------------------
+// Хэши/сравнение для uint32_t / uint64_t
+//------------------------------------------------------------------------------
+
+static size_t hash_u32_good(const void* k) {
+    // библиотека сама делает mix_hash, поэтому можно простенько
+    return (size_t)(*(const uint32_t*)k);
+}
+
+static size_t hash_u32_const(const void* /*k*/) {
+    // намеренно плохой хэш -> тестируем пробирование/коллизии
+    return 1u;
+}
+
+static bool cmp_u32(const void* a, const void* b) {
+    return *(const uint32_t*)a == *(const uint32_t*)b;
+}
+
+static size_t hash_u64_good(const void* k) {
+    const uint64_t x = *(const uint64_t*)k;
+    return (size_t)x;
+}
+
+static bool cmp_u64(const void* a, const void* b) {
+    return *(const uint64_t*)a == *(const uint64_t*)b;
+}
+
+//------------------------------------------------------------------------------
+// Мини-фреймворк тестов
+//------------------------------------------------------------------------------
 
 static int g_failed = 0;
 
-#define CHECK(cond, msg)                                              \
-    do {                                                              \
-        if (cond) {                                                   \
-            std::printf("[ OK ] %s\n", msg);                          \
-        } else {                                                      \
-            std::printf("[FAIL] %s\n", msg);                          \
-            g_failed++;                                               \
-        }                                                             \
-    } while (0)
+#define CHECK(cond) do {                                                     \
+    if (!(cond)) {                                                           \
+        std::fprintf(stderr, "[FAIL] %s:%d: %s\n", __FILE__, __LINE__, #cond);\
+        ++g_failed;                                                          \
+        return;                                                              \
+    }                                                                        \
+} while (0)
 
-//---------------------------------------------------------------
-// Тест 1: базовые операции insert / get / remove
-//---------------------------------------------------------------
-static void test_basic() {
-    std::puts("=== test_basic ===");
+#define CHECK_EQ(a,b) CHECK((a) == (b))
+#define CHECK_NE(a,b) CHECK((a) != (b))
 
-    u_map_t m = {};
-    error_t err = u_map_init(&m,
-                             4,                                // capacity hint
-                             sizeof(size_t), // key
-                             sizeof(int),    alignof(int),    // value
-                             size_t_hash,
-                             size_t_eq);
-    CHECK(err == HM_ERR_OK, "u_map_init returns OK");
+#define CHECK_OK(err)   CHECK((err) == HM_ERR_OK)
+#define CHECK_NF(err)   CHECK((err) == HM_ERR_NOT_FOUND)
+#define CHECK_FULL(err) CHECK((err) == HM_ERR_FULL)
 
-    size_t k1 = 42;
-    int    v1 = 100;
-    err = u_map_insert_elem(&m, &k1, &v1);
-    CHECK(err == HM_ERR_OK, "insert k1");
-    CHECK(u_map_size(&m) == 1, "size == 1 after first insert");
+//------------------------------------------------------------------------------
+// Тесты
+//------------------------------------------------------------------------------
 
-    int out = 0;
-    bool found = u_map_get_elem(&m, &k1, &out);
-    CHECK(found,          "get existing key k1");
-    CHECK(out == v1,      "value for k1 is correct");
+static void test_basic_ops() {
+    std::puts("[RUN ] test_basic_ops");
 
-    // перезапись значения по тому же ключу
-    int v2 = 777;
-    err = u_map_insert_elem(&m, &k1, &v2);
-    CHECK(err == HM_ERR_OK, "re-insert same key k1");
-    // ожидаем size не увеличился (если реализуешь именно так)
-    CHECK(u_map_size(&m) == 1, "size still == 1 after reinsert same key (ожидаемое поведение)");
+    u_map_t m {};
+    CHECK_OK(SIMPLE_U_MAP_INIT(&m, 8, uint32_t, uint32_t, hash_u32_good, cmp_u32));
 
+    CHECK(is_pow2(u_map_capacity(&m)));
+    CHECK_EQ(u_map_size(&m), 0u);
+    CHECK(u_map_is_empty(&m));
+
+    // insert
+    uint32_t k = 7, v = 100;
+    CHECK_OK(u_map_insert_elem(&m, &k, &v));
+    CHECK_EQ(u_map_size(&m), 1u);
+    CHECK(!u_map_is_empty(&m));
+
+    // get
+    uint32_t out = 0;
+    CHECK(u_map_get_elem(&m, &k, &out));
+    CHECK_EQ(out, 100u);
+
+    // update existing (size must not change)
+    v = 200;
+    CHECK_OK(u_map_insert_elem(&m, &k, &v));
+    CHECK_EQ(u_map_size(&m), 1u);
     out = 0;
-    found = u_map_get_elem(&m, &k1, &out);
-    CHECK(found,          "get k1 after reinsert");
-    CHECK(out == v2,      "value for k1 updated");
+    CHECK(u_map_get_elem(&m, &k, &out));
+    CHECK_EQ(out, 200u);
 
-    // удаление
-    int removed = 0;
-    err = u_map_remove_elem(&m, &k1, &removed);
-    CHECK(err == HM_ERR_OK, "remove k1 returns OK");
-    CHECK(removed == v2,    "removed value matches last stored");
-    CHECK(u_map_size(&m) == 0, "size == 0 after remove");
+    // existence-only get
+    CHECK(u_map_get_elem(&m, &k, nullptr));
 
-    out = 0;
-    found = u_map_get_elem(&m, &k1, &out);
-    CHECK(!found, "get removed key returns false");
+    // remove
+    uint32_t removed = 0;
+    CHECK_OK(u_map_remove_elem(&m, &k, &removed));
+    CHECK_EQ(removed, 200u);
+    CHECK_EQ(u_map_size(&m), 0u);
+    CHECK(u_map_is_empty(&m));
+    CHECK(!u_map_get_elem(&m, &k, &out));
+    CHECK_NF(u_map_remove_elem(&m, &k, nullptr));
 
-    u_map_dest(&m);
+    CHECK_OK(u_map_destroy(&m));
+
+    std::puts("[OK  ] test_basic_ops");
 }
 
-//---------------------------------------------------------------
-// Тест 2: рост capacity (rehash вверх)
-//---------------------------------------------------------------
-static void test_growth() {
-    std::puts("=== test_growth ===");
+static void test_collisions_constant_hash() {
+    std::puts("[RUN ] test_collisions_constant_hash");
 
-    u_map_t m = {};
-    error_t err = u_map_init(&m,
-                             2,
-                             sizeof(size_t),
-                             sizeof(int),    alignof(int),
-                             size_t_hash,
-                             size_t_eq);
-    CHECK(err == HM_ERR_OK, "u_map_init for growth test");
+    u_map_t m {};
+    CHECK_OK(SIMPLE_U_MAP_INIT(&m, 32, uint32_t, uint32_t, hash_u32_const, cmp_u32));
 
-    size_t initial_cap = u_map_capacity(&m);
+    constexpr uint32_t N = 2000;
+    for (uint32_t i = 0; i < N; ++i) {
+        uint32_t key = i;
+        uint32_t val = i * 3u + 1u;
+        CHECK_OK(u_map_insert_elem(&m, &key, &val));
+    }
+    CHECK_EQ(u_map_size(&m), (size_t)N);
 
-    // Вставляем много элементов, чтобы переполнить load_factor
-    const size_t N = 200;
-    for (size_t i = 0; i < N; ++i) {
-        int v = (int)(i * 10);
-        err = u_map_insert_elem(&m, &i, &v);
-        CHECK(err == HM_ERR_OK, "insert many elements (growth)");
+    // verify all
+    for (uint32_t i = 0; i < N; ++i) {
+        uint32_t key = i;
+        uint32_t out = 0;
+        CHECK(u_map_get_elem(&m, &key, &out));
+        CHECK_EQ(out, i * 3u + 1u);
     }
 
-    size_t final_cap = u_map_capacity(&m);
-    CHECK(final_cap >= initial_cap, "capacity did not shrink after many inserts");
-    CHECK(u_map_size(&m) == N,      "size == N after many inserts");
+    // remove every 3rd
+    for (uint32_t i = 0; i < N; i += 3) {
+        uint32_t key = i;
+        CHECK_OK(u_map_remove_elem(&m, &key, nullptr));
+    }
+    CHECK_EQ(u_map_size(&m), (size_t)(N - (N + 2) / 3));
 
-    // Проверим несколько значений
-    for (size_t i = 0; i < N; i += 37) {
-        int out = 0;
-        bool found = u_map_get_elem(&m, &i, &out);
-        CHECK(found, "get existing key after rehash");
-        CHECK(out == (int)(i * 10), "value correct after rehash");
+    // verify removed / remaining
+    for (uint32_t i = 0; i < N; ++i) {
+        uint32_t key = i;
+        uint32_t out = 0;
+        bool ok = u_map_get_elem(&m, &key, &out);
+        if (i % 3 == 0) {
+            CHECK(!ok);
+        } else {
+            CHECK(ok);
+            CHECK_EQ(out, i * 3u + 1u);
+        }
     }
 
-    u_map_dest(&m);
+    // re-insert removed with new values + add some new keys
+    for (uint32_t i = 0; i < N; i += 3) {
+        uint32_t key = i;
+        uint32_t val = 999999u ^ i;
+        CHECK_OK(u_map_insert_elem(&m, &key, &val));
+    }
+    for (uint32_t i = N; i < N + 200; ++i) {
+        uint32_t key = i;
+        uint32_t val = i + 123u;
+        CHECK_OK(u_map_insert_elem(&m, &key, &val));
+    }
+
+    // verify again
+    for (uint32_t i = 0; i < N + 200; ++i) {
+        uint32_t key = i;
+        uint32_t out = 0;
+        CHECK(u_map_get_elem(&m, &key, &out));
+        if (i < N && i % 3 == 0) {
+            CHECK_EQ(out, 999999u ^ i);
+        } else if (i < N) {
+            CHECK_EQ(out, i * 3u + 1u);
+        } else {
+            CHECK_EQ(out, i + 123u);
+        }
+    }
+
+    CHECK_OK(u_map_destroy(&m));
+    std::puts("[OK  ] test_collisions_constant_hash");
 }
 
-//---------------------------------------------------------------
-// Тест 3: shrink (rehash вниз) + tombstone
-//---------------------------------------------------------------
-static void test_shrink_and_tombstones() {
-    std::puts("=== test_shrink_and_tombstones ===");
+static void test_fuzz_against_std_unordered_map() {
+    std::puts("[RUN ] test_fuzz_against_std_unordered_map");
 
-    u_map_t m = {};
-    error_t err = u_map_init(&m,
-                             32,
-                             sizeof(size_t), 
-                             sizeof(int),    alignof(int),
-                             size_t_hash,
-                             size_t_eq);
-    CHECK(err == HM_ERR_OK, "u_map_init for shrink test");
+    u_map_t m {};
+    CHECK_OK(SIMPLE_U_MAP_INIT(&m, 64, uint32_t, uint32_t, hash_u32_good, cmp_u32));
 
-    const size_t N = 64;
-    for (size_t i = 0; i < N; ++i) {
-        int v = (int)i;
-        err = u_map_insert_elem(&m, &i, &v);
-        CHECK(err == HM_ERR_OK, "insert for shrink test");
+    std::unordered_map<uint32_t, uint32_t> ref;
+
+    std::mt19937 rng(0xC0FFEEu);
+    std::uniform_int_distribution<uint32_t> key_dist(0, 5000);
+    std::uniform_int_distribution<uint32_t> val_dist(0, 0xFFFFFFFFu);
+    std::uniform_int_distribution<int> op_dist(0, 2); // 0 insert/update, 1 remove, 2 get
+
+    constexpr int OPS = 60000;
+
+    for (int i = 0; i < OPS; ++i) {
+        uint32_t k = key_dist(rng);
+        int op = op_dist(rng);
+
+        if (op == 0) {
+            uint32_t v = val_dist(rng);
+            hm_error_t err = u_map_insert_elem(&m, &k, &v);
+            CHECK_OK(err);
+            ref[k] = v;
+        } else if (op == 1) {
+            hm_error_t err = u_map_remove_elem(&m, &k, nullptr);
+            auto it = ref.find(k);
+            if (it == ref.end()) {
+                CHECK_NF(err);
+            } else {
+                CHECK_OK(err);
+                ref.erase(it);
+            }
+        } else {
+            uint32_t out = 0;
+            bool ok = u_map_get_elem(&m, &k, &out);
+            auto it = ref.find(k);
+            if (it == ref.end()) {
+                CHECK(!ok);
+            } else {
+                CHECK(ok);
+                CHECK_EQ(out, it->second);
+            }
+        }
+
+        CHECK_EQ(u_map_size(&m), ref.size());
     }
 
-    size_t cap_before = u_map_capacity(&m);
-
-    // удаляем почти всё, чтобы заставить таблицу ужаться
-    for (size_t i = 0; i < N - 2; ++i) {
-        int removed = -1;
-        err = u_map_remove_elem(&m, &i, &removed);
-        CHECK(err == HM_ERR_OK, "remove existing (shrink)");
-        CHECK(removed == (int)i, "removed value correct");
+    // финальная сверка: все элементы ref должны быть доступны
+    for (const auto& [k, v] : ref) {
+        uint32_t out = 0;
+        CHECK(u_map_get_elem(&m, &k, &out));
+        CHECK_EQ(out, v);
     }
 
-    size_t cap_after = u_map_capacity(&m);
-    CHECK(cap_after <= cap_before, "capacity shrank or stayed same");
-
-    // Проверка, что оставшиеся ключи живы
-    for (size_t i = N - 2; i < N; ++i) {
-        int out = -1;
-        bool found = u_map_get_elem(&m, &i, &out);
-        CHECK(found, "remaining keys exist after shrink");
-        CHECK(out == (int)i, "remaining values correct");
-    }
-
-    u_map_dest(&m);
+    CHECK_OK(u_map_destroy(&m));
+    std::puts("[OK  ] test_fuzz_against_std_unordered_map");
 }
 
-//---------------------------------------------------------------
-// Тест 4: raw_copy / smart_copy
-//---------------------------------------------------------------
-static void test_copy() {
-    std::puts("=== test_copy ===");
-
-    u_map_t src = {};
-    error_t err = u_map_init(&src,
-                             8,
-                             sizeof(size_t), 
-                             sizeof(int),    alignof(int),
-                             size_t_hash,
-                             size_t_eq);
-    CHECK(err == HM_ERR_OK, "u_map_init for copy test");
-
-    for (size_t i = 0; i < 10; ++i) {
-        int v = (int)(i * 3);
-        err = u_map_insert_elem(&src, &i, &v);
-        CHECK(err == HM_ERR_OK, "insert into src");
-    }
-
-    // RAW COPY
-    u_map_t dst_raw = {};
-    err = u_map_raw_copy(&src, &dst_raw);
-    CHECK(err == HM_ERR_OK, "u_map_raw_copy returns OK");
-    CHECK(u_map_size(&dst_raw) == u_map_size(&src), "raw_copy keeps size");
-
-    for (size_t i = 0; i < 10; ++i) {
-        int out1 = -1, out2 = -1;
-        bool f1 = u_map_get_elem(&src,    &i, &out1);
-        bool f2 = u_map_get_elem(&dst_raw,&i, &out2);
-        CHECK(f1 && f2, "raw_copy: both maps have key");
-        CHECK(out1 == out2, "raw_copy: values are equal");
-    }
-
-    // SMART COPY
-    u_map_t dst_smart = {};
-    err = u_map_smart_copy(&src, &dst_smart);
-    CHECK(err == HM_ERR_OK, "u_map_smart_copy returns OK");
-    CHECK(u_map_size(&dst_smart) == u_map_size(&src), "smart_copy keeps size");
-
-    for (size_t i = 0; i < 10; ++i) {
-        int out1 = -1, out2 = -1;
-        bool f1 = u_map_get_elem(&src,      &i, &out1);
-        bool f2 = u_map_get_elem(&dst_smart,&i, &out2);
-        CHECK(f1 && f2, "smart_copy: both maps have key");
-        CHECK(out1 == out2, "smart_copy: values are equal");
-    }
-
-    u_map_dest(&src);
-    u_map_dest(&dst_raw);
-    u_map_dest(&dst_smart);
-}
-
-//---------------------------------------------------------------
-// Тест 5: static init
-//---------------------------------------------------------------
 static void test_static_init() {
-    std::puts("=== test_static_init ===");
+    std::puts("[RUN ] test_static_init");
 
-    const size_t cap        = 8;
-    const size_t key_size   = sizeof(size_t);
-    const size_t val_size   = sizeof(int);
-    const size_t val_align  = alignof(int);
+    constexpr size_t requested_capacity = 300; // округлится вниз до 256
+    const size_t bytes = u_map_required_bytes(requested_capacity,
+                                              sizeof(uint64_t), alignof(uint64_t),
+                                              sizeof(uint64_t), alignof(uint64_t));
+    CHECK(bytes != 0);
 
-    // Посчитаем размер буфера так же, как делает u_map_static_init
-    size_t keys_bytes    = cap * key_size;
-    size_t values_offset = keys_bytes;
-    if (val_align > 1) {
-        size_t rem = values_offset % val_align;
-        if (rem) values_offset += (val_align - rem);
+    const size_t alignment = std::max({(size_t)alignof(uint64_t),
+                                      (size_t)alignof(uint64_t),
+                                      (size_t)alignof(elem_state_t)});
+
+    void* buf = aligned_malloc_portable(alignment, bytes);
+    CHECK(buf != nullptr);
+    std::memset(buf, 0, bytes);
+
+    u_map_t m {};
+    CHECK_OK(u_map_static_init(&m, buf, requested_capacity,
+                              sizeof(uint64_t), alignof(uint64_t),
+                              sizeof(uint64_t), alignof(uint64_t),
+                              hash_u64_good, cmp_u64));
+
+    CHECK(is_pow2(u_map_capacity(&m)));
+    CHECK(u_map_capacity(&m) <= requested_capacity);
+    CHECK_EQ(u_map_size(&m), 0u);
+
+    // простые операции
+    for (uint64_t i = 1; i <= 100; ++i) {
+        uint64_t k = i;
+        uint64_t v = i * 10;
+        CHECK_OK(u_map_insert_elem(&m, &k, &v));
     }
-    size_t total_bytes = values_offset + cap * val_size;
+    CHECK_EQ(u_map_size(&m), 100u);
 
-    void* buffer = std::calloc(1, total_bytes);
-    CHECK(buffer != nullptr, "buffer for static init allocated");
+    for (uint64_t i = 1; i <= 100; ++i) {
+        uint64_t k = i, out = 0;
+        CHECK(u_map_get_elem(&m, &k, &out));
+        CHECK_EQ(out, i * 10);
+    }
 
-    u_map_t m = {};
-    error_t err = u_map_static_init(&m,
-                                    buffer,
-                                    cap,
-                                    key_size,  
-                                    val_size,  val_align,
-                                    size_t_hash,
-                                    size_t_eq);
-    CHECK(err == HM_ERR_OK, "u_map_static_init returns OK");
+    CHECK_OK(u_map_destroy(&m)); // для static должен быть безопасным
+    aligned_free_portable(buf);
 
-    // Простейшие операции
-    size_t k = 123;
-    int    v = 999;
-    err = u_map_insert_elem(&m, &k, &v);
-    CHECK(err == HM_ERR_OK, "insert into static map");
-
-    int out = 0;
-    bool found = u_map_get_elem(&m, &k, &out);
-    CHECK(found, "get from static map");
-    CHECK(out == v, "value from static map correct");
-
-    // dest не освобождает data при is_static = true
-    u_map_dest(&m);
-    std::free(buffer);
+    std::puts("[OK  ] test_static_init");
 }
 
-//---------------------------------------------------------------
+static void test_copy_smart_and_raw() {
+    std::puts("[RUN ] test_copy_smart_and_raw");
+
+    u_map_t src {};
+    CHECK_OK(SIMPLE_U_MAP_INIT(&src, 64, uint32_t, uint32_t, hash_u32_const, cmp_u32));
+
+    for (uint32_t i = 0; i < 1000; ++i) {
+        uint32_t k = i;
+        uint32_t v = i ^ 0xA5A5A5A5u;
+        CHECK_OK(u_map_insert_elem(&src, &k, &v));
+    }
+
+    // smart copy
+    u_map_t smart {};
+    CHECK_OK(u_map_smart_copy(&smart, &src));
+    CHECK_EQ(u_map_size(&smart), u_map_size(&src));
+
+    // raw copy
+    u_map_t raw {};
+    CHECK_OK(u_map_raw_copy(&raw, &src));
+    CHECK_EQ(u_map_size(&raw), u_map_size(&src));
+
+    // сверка значений + независимость (после изменения src копии не должны поменяться)
+    for (uint32_t i = 0; i < 1000; ++i) {
+        uint32_t k = i;
+
+        uint32_t s = 0, a = 0, b = 0;
+        CHECK(u_map_get_elem(&src,   &k, &s));
+        CHECK(u_map_get_elem(&smart, &k, &a));
+        CHECK(u_map_get_elem(&raw,   &k, &b));
+        CHECK_EQ(s, a);
+        CHECK_EQ(s, b);
+    }
+
+    // меняем src
+    for (uint32_t i = 0; i < 200; ++i) {
+        uint32_t k = i;
+        uint32_t v = 123456u + i;
+        CHECK_OK(u_map_insert_elem(&src, &k, &v));
+    }
+
+    // копии должны хранить старые значения для i<200
+    for (uint32_t i = 0; i < 200; ++i) {
+        uint32_t k = i;
+        uint32_t out = 0;
+        CHECK(u_map_get_elem(&smart, &k, &out));
+        CHECK_EQ(out, (i ^ 0xA5A5A5A5u));
+
+        CHECK(u_map_get_elem(&raw, &k, &out));
+        CHECK_EQ(out, (i ^ 0xA5A5A5A5u));
+    }
+
+    CHECK_OK(u_map_destroy(&raw));
+    CHECK_OK(u_map_destroy(&smart));
+    CHECK_OK(u_map_destroy(&src));
+
+    std::puts("[OK  ] test_copy_smart_and_raw");
+}
+
+static size_t round_up_to_test(size_t x, size_t a) {
+    if (a == 0) return x;
+    size_t r = x % a;
+    return r ? (x + (a - r)) : x;
+}
+
+static void test_read_arr_to_u_map() {
+    std::puts("[RUN ] test_read_arr_to_u_map");
+
+    // специально делаем value_align больше key_size, чтобы проверить паддинг
+    using K = uint32_t;
+    using V = double;
+
+    u_map_t m {};
+    CHECK_OK(u_map_init(&m, 64,
+                        sizeof(K), alignof(K),
+                        sizeof(V), alignof(V),
+                        hash_u32_good, cmp_u32));
+
+    const size_t key_part = sizeof(K);
+    const size_t value_off = round_up_to_test(key_part, alignof(V));
+    const size_t pair_stride = value_off + sizeof(V);
+
+    constexpr size_t N = 50;
+    std::vector<unsigned char> buf(pair_stride * N, 0);
+
+    for (size_t i = 0; i < N; ++i) {
+        K k = (K)(1000 + i);
+        V v = (V)(0.5 * (double)i);
+
+        std::memcpy(buf.data() + i * pair_stride, &k, sizeof(K));
+        std::memcpy(buf.data() + i * pair_stride + value_off, &v, sizeof(V));
+    }
+
+    CHECK_OK(read_arr_to_u_map(&m, buf.data(), N));
+    CHECK_EQ(u_map_size(&m), N);
+
+    for (size_t i = 0; i < N; ++i) {
+        K k = (K)(1000 + i);
+        V out = 0;
+        CHECK(u_map_get_elem(&m, &k, &out));
+        CHECK(out == (V)(0.5 * (double)i));
+    }
+
+    CHECK_OK(u_map_destroy(&m));
+    std::puts("[OK  ] test_read_arr_to_u_map");
+}
+
+//------------------------------------------------------------------------------
+// main
+//------------------------------------------------------------------------------
 
 int main() {
-    logger_initialize_stream(stderr);
-
-    test_basic();
-    test_growth();
-    test_shrink_and_tombstones();
-    test_copy();
+    test_basic_ops();
+    test_collisions_constant_hash();
+    test_fuzz_against_std_unordered_map();
     test_static_init();
+    test_copy_smart_and_raw();
+    test_read_arr_to_u_map();
 
     if (g_failed == 0) {
-        std::puts("=== ALL TESTS PASSED ===");
+        std::puts("\nALL TESTS PASSED ✅");
         return 0;
-    } else {
-        std::printf("=== %d TEST(S) FAILED ===\n", g_failed);
-        return 1;
     }
+
+    std::fprintf(stderr, "\nFAILED: %d test(s)\n", g_failed);
+    return 1;
 }

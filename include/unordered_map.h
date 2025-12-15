@@ -59,7 +59,7 @@ size_t u_map_required_bytes(size_t capacity,
 //================================================================================
 
 // - capacity округляется вверх до ближайшей степени двойки (и >= INITIAL_CAPACITY внутри .cpp).
-error_t u_map_init(u_map_t* u_map, size_t capacity,
+hm_error_t u_map_init(u_map_t* u_map, size_t capacity,
                    size_t key_size,   size_t key_align,
                    size_t value_size, size_t value_align,
                    key_func_t hash_func, key_cmp_t key_cmp);
@@ -68,15 +68,15 @@ error_t u_map_init(u_map_t* u_map, size_t capacity,
 // - capacity округляетс вниз до ближайшей степени 2-ки  (больше > 0).
 // - при вызову должен быть предоставлен буффер выравненнй хотя бы по максимальному (key_align, value_align, alignof(elem_state_t))
 // - буффер должен быть хотя бы u_map_required_bytes(capacity, ...)
-error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
+hm_error_t u_map_static_init(u_map_t* u_map, void* data, size_t capacity,
                           size_t key_size,   size_t key_align,
                           size_t value_size, size_t value_align,
                           key_func_t hash_func, key_cmp_t key_cmp);
 
-error_t u_map_destroy(u_map_t* u_map);
+hm_error_t u_map_destroy(u_map_t* u_map);
 
-error_t u_map_smart_copy(u_map_t* target, const u_map_t* source);
-error_t u_map_raw_copy  (u_map_t* target, const u_map_t* source);
+hm_error_t u_map_smart_copy(u_map_t* target, const u_map_t* source);
+hm_error_t u_map_raw_copy  (u_map_t* target, const u_map_t* source);
 
 
 //================================================================================
@@ -88,15 +88,15 @@ size_t u_map_capacity(const u_map_t* u_map);
 bool   u_map_is_empty(const u_map_t* u_map);
 
 bool    u_map_get_elem   (const u_map_t* u_map, const void* key, void* value_out);
-error_t u_map_insert_elem(u_map_t*       u_map, const void* key, const void* value);
-error_t u_map_remove_elem(u_map_t*       u_map, const void* key, void* value_out);
+hm_error_t u_map_insert_elem(u_map_t*       u_map, const void* key, const void* value);
+hm_error_t u_map_remove_elem(u_map_t*       u_map, const void* key, void* value_out);
 
 
 //================================================================================
 //                              Продвинутые функции
 //================================================================================
 
-error_t read_arr_to_u_map(u_map_t* u_map, const void* arr, size_t pair_count);
+hm_error_t read_arr_to_u_map(u_map_t* u_map, const void* arr, size_t pair_count);
 
 
 //================================================================================
