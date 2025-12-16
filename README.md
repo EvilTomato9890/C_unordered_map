@@ -66,21 +66,21 @@ int main() {
 
 - `key_func_t`: `size_t (*)(const void* key)` — хэш ключа
 - `key_cmp_t`: `bool (*)(const void* a, const void* b)` — сравнение ключей
-- `u_map_t` — структура таблицы (поля считаем внутренними; не трогай руками).
+- `u_map_t` — структура таблицы (поля считаем внутренними).
 
 ### Конструкторы / деструкторы / копировальщики
 
 - `error_t u_map_init(...)`  
-  Динамическая таблица. `capacity` поднимается до степени двойки и минимум до внутреннего `INITIAL_CAPACITY`.
+  Динамическая таблица. `capacity` gjdsiftncz до степени двойки и, как минимум, до внутреннего `INITIAL_CAPACITY`.
 
 - `error_t u_map_static_init(...)`  
-  Таблица в предоставленном буфере:
+  Таблица в переданном буфере:
   - `capacity` округляется **вниз** до степени двойки, и должна быть `> 0`
   - буфер обязан быть выровнен хотя бы по `max(key_align, value_align, alignof(elem_state_t))`
   - размер буфера: `u_map_required_bytes(capacity, ...)`
 
 - `error_t u_map_destroy(u_map_t* u_map)`  
-  Освобождает память **только** для динамической таблицы; для статической — просто “обнуляет” структуру.
+  Освобождает память **только** для динамической таблицы; для статической — просто обнуляет структуру.
 
 - `error_t u_map_smart_copy(u_map_t* target, const u_map_t* source)`  
   Копирует только `USED` элементы (через вставку в новый map).
@@ -94,10 +94,12 @@ int main() {
   Возвращает `true/false`. Если `value_out != NULL`, копирует значение.
 
 - `error_t u_map_insert_elem(u_map_t* u_map, const void* key, const void* value)`  
+  - если при вызове требуется может сделать rehash/resize
   - если ключ уже есть — **обновляет значение**
-  - если ключ новый — вставляет; может вызвать rehash/resize.
+  - если ключ новый — вставляет
 
 - `error_t u_map_remove_elem(u_map_t* u_map, const void* key, void* value_out)`  
+  - если при вызове требуется может сделать rehash/resize
   - если ключ найден — помечает слот `DELETED`, уменьшает `size`
   - если `value_out != NULL` — возвращает удалённое значение.
 
